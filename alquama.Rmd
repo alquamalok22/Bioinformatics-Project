@@ -1,0 +1,361 @@
+---
+title: "Project"
+author: "Alquama"
+date: "10/3/2023"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+``` {r setup, include=FALSE}
+```
+
+``` {r}
+### Load Libraries ##
+
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(pheatmap)
+library(reshape2)
+library(tidyr)
+
+```
+
+### Task 1 ###
+```{r}
+data <- read_csv("C:/Users/alqua/Desktop/R.samples/Biostate_2023_BA_Test_RevA (1).csv")
+gene_expression_S1_T0 <-data$T0[data$Sample == "S1"]
+head(gene_expression_S1_T0, 6)
+
+ranked_genes <- data %>% arrange(desc(T0)) %>% filter(Sample == "S1") %>%pull('Gene ID')
+median_expression <- median(gene_expression_S1_T0)
+average_expression <- mean(gene_expression_S1_T0)
+gene_data <- data.frame(Gene_Rank = 1:length(gene_expression_S1_T0),
+                         Expression_Count = gene_expression_S1_T0)
+ggplot(gene_data, aes(x = Gene_Rank, y = Expression_Count)) +
+     geom_line(color = "blue") +
+     geom_hline(yintercept = median_expression, color = "red", linetype = "dashed") +
+     geom_hline(yintercept = average_expression, color = "green", linetype = "dashed") +
+     labs(title = "Gene Expression Distribution for S1 at T0",
+          x = "Gene Rank", y = "Expression Level") +
+     theme_minimal()
+
+
+### Pseudo code ###
+
+data %>%filter(Sample == "S1") %>% select(T0, `Gene ID`) %>% ggplot(aes(x = as.numeric(reorder(`Gene ID`, -T0)), y = T0)) +
+  geom_point(colour = "blue") +
+  scale_x_log10() +
+  scale_y_log10() +
+  ylab("Count") +
+  geom_hline(yintercept = mean(data$T0), linetype = "dotted") +
+  geom_text(aes(x = 10, y = mean(data$T0) + 10, label = "Average")) +
+  geom_hline(yintercept = median(data$T0), linetype = "dotted") +
+  geom_text(aes(x = 10, y = median(data$T0) + 10, label = "Median")) +
+  xlab("genes ID ranked based on their expression levels from high to low") +
+  ylab("Count (in log10 scale)") +
+  ggtitle("Distribution of Gene Expression for the First sample at T0")
+
+```
+### Task 2
+
+```{r}
+data <- read_csv("C:/Users/alqua/Desktop/R.samples/Biostate_2023_BA_Test_RevA (1).csv")
+S2 <- data %>%
+     filter(Sample == "S2") %>%
+    summarise_each(funs = mean, -c(`Gene ID`, Sample))
+
+S3 <- data %>%
+     filter(Sample == "S3") %>%
+     summarise_each(funs = mean, -c(`Gene ID`, Sample))
+df <- rbind(S2,S3) %>%
+     pivot_longer(cols = everything(), names_to = "Time", values_to = "Count")
+df <- cbind(df[1:9,], df[10:18,])
+colnames(df) <- c("Time", "S2", "Time1", "S3")
+ggplot(df, aes(x = S2, y = S3)) +
+     geom_point(colour = "blue") +
+     geom_abline(slope = 1) +
+     ggtitle("Comparing the Average Gene Counts in S2 and S3")
+``` 
+
+
+
+
+
+### Task 3 ###
+
+```{r}
+data <- read_csv("C:/Users/alqua/Desktop/R.samples/Biostate_2023_BA_Test_RevA (1).csv")
+gene_expression_S2 <- data[data$Sample == "S2", 1:10]
+cv <- apply(gene_expression_S2, 1, function(x) {
+     if (length(x) > 1) {
+        cv <- sd(x) / mean(x) * 100
+    } else {
+         cv <- NA
+     }
+     return(cv)
+ })
+
+
+gene_cv_data <- data.frame(Gene_ID = gene_expression_S2$`Gene ID`, CV = cv)
+gene_cv_data <- gene_cv_data %>%arrange(desc(CV))
+gene_cv_data$Gene_Rank <- seq_along(gene_cv_data$Gene_ID)
+ggplot(gene_cv_data, aes(x = Gene_Rank, y = CV)) +
+    geom_point() +
+    labs(title = "Coefficient of Variation (CV) for S2 Across Time Points",
+          x = "Gene Rank",
+          y = "CV") +
+     theme_minimal()
+```
+
+
+### Task 4
+```{r}
+data <- read_csv("C:/Users/alqua/Desktop/R.samples/Biostate_2023_BA_Test_RevA (1).csv")
+sample_s4 <- data %>%
+     filter(Sample == "S4")
+sample_s4 <- sample_s4 %>%
+     mutate(Total_Counts = rowSums(select(., starts_with("T0"), starts_with("T1"))),
+            Gene_Rank = rank(-Total_Counts))
+
+selected_genes <- sample_s4 %>%
+     filter(Gene_Rank >= 100 & Gene_Rank <= 150)
+
+heatmap_data <- selected_genes %>%select('Gene ID', T0, T1)
+heatmap_matrix <- as.matrix(heatmap_data[, -1])
+heatmap(heatmap_matrix, 
+        Colv = NA,
+        scale = "column",           
+        col = colorRampPalette(c("blue", "white", "red"))(50),  # Define colors
+         xlab = "Time Point",
+         ylab = "Gene ID",
+         main = "Differential Expression Heatmap (S4)")
+
+
+
+ggplot(heatmap_data, aes(x = T0, y = 'Gene ID', fill = T1)) +
+     geom_tile() +
+     scale_fill_gradient(low = "blue", high = "red") +
+     labs(x = "Time Point", y = "Gene ID", title = "Differential Expression Heatmap (S4)") +
+     theme_minimal() +
+     theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+``` 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Task 5
+```{r}
+data <- read_csv("C:/Users/alqua/Desktop/R.samples/Biostate_2023_BA_Test_RevA (1).csv")
+sample_s5_t0 <- data %>%
+     filter(Sample == "S5") %>%
+     select(T0)
+sample_s6_t6 <- data %>%
+     filter(Sample == "S6") %>%
+     select(T6)
+cumulative_data <- data.frame(
+     Expression_Level = c(sample_s5_t0$T0, sample_s6_t6$T6),
+     Sample = c(rep("S5 (T0)", length(sample_s5_t0$T0)), rep("S6 (T6)", length(sample_s6_t6$T6)))
+ )
+ggplot(cumulative_data, aes(x = Expression_Level, color = Sample)) +
+     stat_ecdf() +
+     labs(x = "Expression Level", y = "Cumulative Probability",
+          title = "Cumulative Distribution of Expression (S5 at T0 and S6 at T6)") +
+     scale_color_manual(values = c("S5 (T0)" = "blue", "S6 (T6)" = "red")) +
+     theme_minimal()
+     
+### # Display the cumulative distribution of expression from T0
+# of the fifth sample:
+
+data %>%
+  filter(Sample == "S5") %>%
+  select(T0) %>%
+  ggplot(aes(T0)) +
+  scale_x_log10() +
+  stat_ecdf(geom = "step") +
+  xlab("Expression from T0 (scaled by log10)") +
+  ggtitle("Cumulative Distribution of Expression from T0 of the Fifth Sample")
+  
+###  #| echo: true
+
+# display the cumulative distribution of expression from T6 of the sixth sample:
+
+data %>%
+  filter(Sample == "S6") %>%
+  select(T6) %>%
+  ggplot(aes(T6)) +
+  scale_x_log10() +
+  stat_ecdf(geom = "step") +
+  xlab("Expression from T6 (scaled by log10)") +
+  ggtitle("Cumulative Distribution of Expression from T6 of the Sixth Sample")
+
+```
+ 
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Task 6
+```{r}
+## Find the faulty dataset
+
+### To detect the fake dataset, I chose to adopt the Benford\'s Law, which looks at the probability that a number in certain data set begins with a given number (its leading digit). Benford\'s Law says that we might expect the leading digits (d) would be equally likely occur, in reality they follow the following equation:
+ # P(d) = \log_{10} (\frac{d+1}{d}), 1 \leq d \leq 9
+
+
+# Function to calculate Benford's Law expected frequencies
+calculate_benfords_law <- function() {
+  d <- 1:9
+  return(log10((1 + d)/d))
+}
+# Function to calculate the first digit frequencies in a dataset
+calculate_first_digit_frequencies <- function(data) {
+  first_digits <- as.numeric(substr(data, 1, 1))
+  digit_counts <- table(first_digits)
+  return(digit_counts)
+}
+
+# Function to plot observed vs. expected frequencies
+plot_benfords_law <- function(observed, expected) {
+  d <- data.frame(Digit = 1:9, 
+                      Observed = observed, 
+                      Expected = expected)
+  
+  ggplot(d, aes(x = as.factor(Digit))) +
+    geom_bar(aes(y = Observed.Freq), 
+             stat = "identity", fill = "blue", alpha = 0.5) +
+    geom_line(aes(x = Digit, y = Expected)) +
+    theme_minimal() +
+    labs(x = "First Digit", y = "Frequency") +
+    ggtitle("Benford's Law: Observed vs. Expected Frequencies")
+}
+
+S1 <- data %>% filter(Sample == "S1") %>% 
+  pivot_longer(cols = T0:T8, names_to = "Time", values_to = "Count")
+S2 <- data %>% filter(Sample == "S2") %>% 
+  pivot_longer(cols = T0:T8, names_to = "Time", values_to = "Count")
+S3 <- data %>% filter(Sample == "S3") %>% 
+  pivot_longer(cols = T0:T8, names_to = "Time", values_to = "Count")
+S4 <- data %>% filter(Sample == "S4") %>% 
+  pivot_longer(cols = T0:T8, names_to = "Time", values_to = "Count")
+S5 <- data %>% filter(Sample == "S5") %>% 
+  pivot_longer(cols = T0:T8, names_to = "Time", values_to = "Count")
+S6 <- data %>% filter(Sample == "S6") %>% 
+  pivot_longer(cols = T0:T8, names_to = "Time", values_to = "Count")
+
+# For the first dataset:
+
+data_column1 <- S1[S1$Count>0,]$Count
+
+# Calculate observed first digit frequencies
+observed_frequencies1 <- calculate_first_digit_frequencies(data_column1)
+
+# Calculate expected first digit frequencies according to Benford's Law
+expected_frequencies1 <- calculate_benfords_law() * sum(observed_frequencies1)
+
+# Plot observed vs. expected frequencies
+plot_benfords_law(observed_frequencies1, expected_frequencies1)
+
+# For the second dataset:
+
+data_column2 <- S2[S2$Count>0,]$Count
+
+# Calculate observed first digit frequencies
+observed_frequencies2 <- calculate_first_digit_frequencies(data_column2)
+
+# Calculate expected first digit frequencies according to Benford's Law
+expected_frequencies2 <- calculate_benfords_law() * sum(observed_frequencies2)
+
+# Plot observed vs. expected frequencies
+plot_benfords_law(observed_frequencies2, expected_frequencies2)
+# For the third dataset:
+
+data_column3 <- S3[S3$Count>0,]$Count
+
+# Calculate observed first digit frequencies
+observed_frequencies3 <- calculate_first_digit_frequencies(data_column3)
+
+# Calculate expected first digit frequencies according to Benford's Law
+expected_frequencies3 <- calculate_benfords_law() * 
+  sum(observed_frequencies3)
+
+# Plot observed vs. expected frequencies
+plot_benfords_law(observed_frequencies3, expected_frequencies3)
+```
+
+```{r}
+# For the Fourth dataset:
+
+data_column4 <- S4[S4$Count>0,]$Count
+
+# Calculate observed first digit frequencies
+observed_frequencies4 <- calculate_first_digit_frequencies(data_column4)
+
+# Calculate expected first digit frequencies according to Benford's Law
+expected_frequencies4 <- calculate_benfords_law()*
+  sum(observed_frequencies4)
+
+# Plot observed vs. expected frequencies
+plot_benfords_law(observed_frequencies4, expected_frequencies4)
+```
+
+```{r}
+# For the 5th dataset:
+
+data_column5 <- S5[S5$Count>0,]$Count
+
+# Calculate observed first digit frequencies
+observed_frequencies5 <- calculate_first_digit_frequencies(data_column5)
+
+# Calculate expected first digit frequencies according to Benford's Law
+expected_frequencies5 <- calculate_benfords_law()*
+  sum(observed_frequencies5)
+
+# Plot observed vs. expected frequencies
+plot_benfords_law(observed_frequencies5, expected_frequencies5)
+```
+
+```{r}
+# For the 6th dataset:
+
+data_column6 <- S6[S6$Count>0,]$Count
+
+# Calculate observed first digit frequencies
+observed_frequencies6 <- calculate_first_digit_frequencies(data_column6)
+
+# Calculate expected first digit frequencies according to Benford's Law
+expected_frequencies6 <- calculate_benfords_law()*
+  sum(observed_frequencies6)
+
+# Plot observed vs. expected frequencies
+plot_benfords_law(observed_frequencies6, expected_frequencies6)
+```
+
+

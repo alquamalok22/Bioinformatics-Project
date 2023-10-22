@@ -1,0 +1,97 @@
+---
+title: "DESeq2 Project"
+author: "Alquama"
+date: "10/20/2023"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+### Load the libraries###
+
+```{r}
+library(DESeq2)
+library(airway)
+#dir <- system.file("extdata", package="airway", mustWork=TRUE)
+#list.files(dir)
+library(tidyr)
+
+```
+
+## Preparing the count data for DESeq2 Analysis ##
+## Retrived data form the airway package ###
+```{r}
+data(airway)
+airway
+
+sample_info <- as.data.frame(colData(airway))
+sample_info <- sample_info[,c(2,3)]
+sample_info$dex <- gsub('trt', 'treated', sample_info$dex)
+sample_info$dex <- gsub('untrt', 'untreated', sample_info$dex)
+names(sample_info) <- c('cellLine', 'dexamethasone')
+write.table(sample_info, file = "sample_info.csv", sep = ',', col.names = T, row.names = T, quote = F)
+
+countsData <- assay(airway)
+write.table(countsData, file = "counts_data.csv", sep = ',', col.names = T, row.names = T, quote = F)
+
+# read in counts data
+counts_data <- read.csv('counts_data.csv')
+head(counts_data)
+
+# read in sample info
+colData <- read.csv('sample_info.csv')
+
+# making sure the row names in colData matches to column names in counts_data
+setequal(colnames(counts_data), rownames(colData))
+
+# are they in the same order?
+identical(colnames(counts_data), rownames(colData))
+
+```
+
+### construct a DESeqDataSet object###
+```{r}
+dds <- DESeqDataSetFromMatrix(countData = counts_data,
+                       colData = colData,
+                       design = ~ dexamethasone)
+
+dds
+
+## # pre-filtering: removing rows with low gene counts
+# keeping rows that have at least 10 reads total
+# Calculate the row-wise sum of counts
+row_sum_counts <- rowSums(counts(dds))
+
+# Create a logical vector indicating rows with a sum of counts >= 10
+keep <- row_sum_counts >= 10
+
+# Filter the DESeqDataSet based on the condition
+dds_filtered <- dds[keep, ]
+
+# Set the reference level for the 'dexamethasone' factor to 'untreated'
+dds$dexamethasone <- relevel(dds$dexamethasone, ref = "untreated")
+
+```
+
+### Run the DESeq2 Test ###
+```{r}
+dds <- DESeq(dds)
+res <- results(dds)
+
+res
+```
+
+### # Explore Results###
+```{r}
+summary(res)
+
+res0.01 <- results(dds, alpha = 0.01)
+summary(res0.01)
+
+```
+
+### Display the MA PLOT ###
+```{r}
+par(mar = c(2, 2, 2, 2))  
+plotMA(res)
+```

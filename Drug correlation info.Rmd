@@ -1,0 +1,115 @@
+---
+title: "Accent co-op"
+output: html_notebook
+---
+
+
+```{r}
+CTD2_compound <- read_csv("C:/Users/alokhandwala/OneDrive - Accent Therapeutics, Inc/Data base files/compound_info.csv")
+
+CTD2_auc <- read_csv("C:/Users/alokhandwala/OneDrive - Accent Therapeutics, Inc/Data base files/data.auc_info.csv")
+
+CTD2_cell_line <- read_csv("C:/Users/alokhandwala/OneDrive - Accent Therapeutics, Inc/Data base files/cell_line.csv")
+
+CTD2_main_table <- read_csv("C:/Users/alokhandwala/OneDrive - Accent Therapeutics, Inc/Data base files/Model.csv")
+```
+
+```{r}
+
+##### Merging the database files with the inhouse AUC'S from dhx9_crownbio_auc.###
+
+CTD2_merge_output <-merge(CTD2_cell_line %>% dplyr::select ("index_ccl","ccl_name"),CTD2_auc, by.x='index_ccl', by.y='index_ccl')
+
+CTD2_merge_1 <-merge(CTD2_compound %>% dplyr::select("index_cpd","cpd_name", "gene_symbol_of_protein_target"),CTD2_merge_output, by.x='index_cpd', by.y='index_cpd')
+
+CTD2_merge_2 <-merge(CTD2_main_table %>% dplyr::select("ModelID","StrippedCellLineName"),CTD2_merge_1, by.x= 'StrippedCellLineName', by.y='ccl_name')
+
+CTD2_out<- CTD2_merge_2 %>% dplyr::select(ModelID, area_under_curve, index_cpd)
+
+CTD2_drug<- CTD2_out %>% pivot_wider(names_from = index_cpd, values_from = area_under_curve, values_fn = mean)
+
+CTD2_internal_merge<- merge(internal_aucs %>% dplyr::select("depmapid","AUC","Cellline"), CTD2_drug, by.x='depmapid', by.y='ModelID')
+```
+
+
+```{r}
+### Correlation analysis with the internal AUC'S from dhx9 with the external databases to study the similar drug pattern.###
+
+CTD_pearson <- cor(CTD2_internal_merge %>% dplyr::select("AUC"),CTD2_internal_merge %>% dplyr::select(c(,4:484)),use= "pairwise.complete.obs" , method = "pearson")
+
+CTD_kendall <- cor(CTD2_internal_merge %>% dplyr::select("AUC"),CTD2_internal_merge %>% dplyr::select(c(,4:484)),use= "pairwise.complete.obs" , method = "kendall")
+
+CTD_spearman <- cor(CTD2_internal_merge %>% dplyr::select("AUC"),CTD2_internal_merge %>% dplyr::select(c(,4:484)),use= "pairwise.complete.obs" , method = "spearman")
+
+CTD_corrs <- cbind (t(CTD_kendall) %>% as.data.frame() %>% rename(CTD_kendall = AUC),
+                     t(CTD_pearson) %>% as.data.frame() %>% rename(CTD_pearson = AUC),
+                     t(CTD_spearman) %>% as.data.frame() %>% rename(CTD_spearman =AUC))
+CTD_merge <- merge(CTD_corrs, CTD2_merge_2 %>% dplyr::select(index_cpd, cpd_name, gene_symbol_of_protein_target) %>% unique(), by.x= 0, by.y="index_cpd" , all.x = T, all.y = F)
+
+CTD_table <- DT::datatable(CTD_merge %>% arrange(CTD_spearman), extensions = 'Buttons', filter='top', options = list(
+    dom = 'Bfrtip',
+   buttons = c(  'excel' )))
+```
+
+```{r}
+### Plotting data analysis for the similar drug pattern for dhx9 with external databases ###
+CTD2_merge_corrs <- merge(CTD_corrs, CTD2_merge_2 %>% dplyr::select(index_cpd, cpd_name, gene_symbol_of_protein_target) %>% unique(), by.x= 0, by.y="index_cpd" , all.x = T, all.y = F)
+
+CTD2_ggplot <- ggplot(CTD2_merge_corrs, aes(x = CTD_kendall, y= CTD_spearman, text=cpd_name)) + geom_point(size=2, shape=23) +  scale_color_manual(values=c("red", "black"))
+
+CTD2_ggplot2 =CTD2_ggplot+ geom_label_repel(aes(label= cpd_name), data= (CTD2_merge_corrs %>% arrange(-CTD_kendall) %>% head(20)), max.overlaps=100)
+
+CTD2_ggplot2
+
+CTD2_ggplot2 =CTD2_ggplot+ geom_label_repel(aes(label= gene_symbol_of_protein_target), data= (CTD2_merge_corrs %>% arrange(-CTD_kendall) %>% head(20)), max.overlaps=100)
+ 
+CTD2_ggplot2
+```
+
+```{r}
+###Normalization of the data ###
+CTD2_data<- (CTD2_merge_corrs)
+CTD2_process<- preProcess(as.data.frame(CTD2_data), method=c("range"))
+CTD2_norm_scale<- predict(CTD2_process, as.data.frame(CTD2_data))
+View(CTD2_norm_scale)
+hist(CTD2_norm_scale$CTD_kendall)
+
+### Clustering Analysis ###
+CTD2_norm_scale<- predict(CTD2_process, as.data.frame(CTD2_data))
+CTD2_df <- CTD2_norm_scale
+View(CTD2_df)
+d <- dist(CTD2_df, method = "euclidean")
+hc1 <- hclust(d, method = "complete" )
+plot(hc1, cex = 0.6, hang = -1)
+```
+
+
+```{r}
+CTD2_internal_aucs <- pivot_longer(CTD2_internal_merge,4:484,names_to='ctd2_ids', values_to='area_under_curve')
+
+CTD2_internal_aucs <- na.omit(CTD2_internal_aucs)
+CTD2_df <- CTD2_internal_aucs %>% group_by(ctd2_ids) %>%  summarise(number.overlap=n(),.groups = 'drop')
+
+CTD2_tbl<- merge(CTD2_df,CTD2_merge_2 %>% dplyr::select("index_cpd","cpd_name","gene_symbol_of_protein_target") %>% unique(), by.x= 'ctd2_ids', by.y='index_cpd')
+View(CTD2_tbl)
+
+CTD2_final <- merge(CTD2_tbl, CTD2_merge_corrs %>% dplyr::select("Row.names","CTD_kendall","CTD_pearson","CTD_spearman")%>% unique(),by.x= "ctd2_ids", by.y="Row.names" , all.x = T, all.y = F)
+View(CTD2_final)
+
+CTD2_x <- DT::datatable(CTD2_final %>% arrange(CTD_kendall), extensions = 'Buttons', filter='top', options = list(
+     dom = 'Bfrtip',
+    buttons = c(  'excel' )))
+CTD2_x
+
+
+CTD2_data <- CTD2_final%>%arrange(desc(CTD_spearman))%>% slice(1:10)
+
+for(cc in CTD2_final %>% arrange(-CTD_spearman) %>% filter(number.overlap>10) %>% head(10) %>% pull(ctd2_ids)) {
+print(ggplot(CTD2_internal_merge,aes(!!as.name(cc),AUC))+geom_point())
+}
+
+for(cc in CTD2_final %>% arrange(CTD_spearman) %>% filter(number.overlap>10) %>% head(10) %>% pull(ctd2_ids)) {
+print(ggplot(CTD2_internal_merge,aes(!!as.name(cc),AUC))+geom_point())
+}  
+```
+
